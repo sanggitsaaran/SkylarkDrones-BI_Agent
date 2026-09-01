@@ -148,7 +148,7 @@ TOOL_DEFINITIONS = [
                 },
                 "limit_rows_returned": {
                     "type": "integer",
-                    "description": "Cap on raw rows to return when NOT aggregating (default 50). Ignored when aggregating.",
+                    "description": "Cap on raw rows to return when NOT aggregating (default 12, max 20 — kept small to stay within API rate limits). Ignored when aggregating. Prefer 'aggregate' for any overview/summary question; only fetch raw rows when the user needs to see specific individual items.",
                 },
             },
             "required": ["board_name_or_id"],
@@ -323,10 +323,12 @@ def _query_board_data(client: MondayClient, params: Dict[str, Any]) -> str:
                 value = None if pd.isna(value) else round(float(value), 2)
             return json.dumps({"aggregate": aggregate, "result": value, "row_count": int(len(df)), "caveats": caveats})
 
-    # --- no aggregation: return raw rows (capped) ---
-    limit = int(params.get("limit_rows_returned") or 50)
+    # --- no aggregation: return raw rows (capped tightly to stay within LLM token/rate limits) ---
+    limit = int(params.get("limit_rows_returned") or 12)
+    limit = min(limit, 20)
     total_matched = len(df)
     df = df.head(limit)
+    # Trim to a smaller set of columns if the row is very wide, to further reduce payload size.
     return json.dumps(
         {
             "row_count_returned": int(len(df)),

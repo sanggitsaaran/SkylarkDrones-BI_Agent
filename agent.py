@@ -19,7 +19,8 @@ from groq import Groq
 from monday_client import MondayClient
 from tools import TOOL_DEFINITIONS, execute_tool, to_openai_tool_format
 
-# Llama 3.3 70B: strong tool-use accuracy + quality tradeoff among Groq's hosted models.
+# GPT-OSS 120B: Groq's current recommended model for tool-use/reasoning workloads
+# (llama-3.3-70b-versatile was deprecated by Groq in June 2026).
 MODEL = "openai/gpt-oss-120b"
 MAX_TOOL_ITERATIONS = 8
 
@@ -50,6 +51,14 @@ call query_board_data on each board separately and reason over both result sets 
 — there is no single cross-board tool.
 7. Keep answers concise and founder-appropriate: lead with the answer, then 1-3 sentences \
 of context/caveats. Avoid dumping raw tables unless asked.
+8. IMPORTANT — this API has a strict rate limit. ALWAYS prefer aggregate queries (count/sum/ \
+avg/min/max, optionally grouped) over fetching raw rows — aggregates are computed server-side \
+and return a tiny payload, while raw rows are expensive and capped at ~12-20 per call. Only \
+fetch raw rows when the user explicitly needs to see specific individual items (e.g. "list the \
+overdue work orders"), and even then keep limit_rows_returned small (10-15). For any \
+overview/summary/"how's X looking" question, use aggregation, not raw rows.
+9. Don't call get_board_schema more than once per board per conversation — reuse what you \
+already learned earlier in this conversation instead of re-fetching it.
 """
 
 
@@ -73,7 +82,7 @@ def run_agent_turn(
     for _ in range(MAX_TOOL_ITERATIONS):
         response = groq_client.chat.completions.create(
             model=MODEL,
-            max_tokens=1500,
+            max_tokens=800,
             tools=OPENAI_TOOLS,
             messages=messages,
         )
